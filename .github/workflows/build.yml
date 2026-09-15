@@ -778,6 +778,21 @@ jobs:
 
           write_boot
 
+          # Flash DTBO image when the device exposes the expected
+          # by-name partition.
+          DTBO_BLOCK="/dev/block/by-name/dtbo"
+
+          if [ -e "$DTBO_BLOCK" ]; then
+            ui_print " "
+            ui_print "Flashing dtbo.img..."
+            write_raw_image dtbo.img "$DTBO_BLOCK"
+            ui_print "dtbo: flashed"
+          else
+            ui_print " "
+            ui_print "WARNING: dtbo partition not found."
+            ui_print "dtbo.img kept in ZIP but not flashed."
+          fi
+
           # Flash vendor_dlkm image when the device exposes the
           # expected by-name partition.
           VENDOR_DLKM_BLOCK="/dev/block/by-name/vendor_dlkm"
