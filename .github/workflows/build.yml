@@ -1,4 +1,4 @@
-name: Realme SM6375 Kernel - Proton Clang + KSU-Next + SUSFS
+name: Realme SM6375 Kernel - Clang r563880c + KSU-Next + SUSFS
 
 on:
   workflow_dispatch:
@@ -21,7 +21,21 @@ jobs:
       KERNEL_NAME: Realme-SM6375-Kernel
       KSU_VERSION: KernelSU-Next Legacy
       SUSFS_VERSION: v2.3.0
-      CLANG_DIR: ${{ github.workspace }}/proton-clang
+
+      CLANG_SOURCE: "https://github.com/bachnxuan/aosp_clang_mirror/releases/download/clang-r563880c-13989888/clang-r563880c.tar.gz"
+      CLANG_BRANCH: "lineage-20.0"
+
+      GCC_GNU: false
+      GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
+      GCC_64_BRANCH: "android12L-release"
+      GCC_32_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
+      GCC_32_BRANCH: "android12L-release"
+
+      CUSTOM_CMDS: "CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu-"
+      EXTRA_CMDS: "LLVM=1 LLVM_IAS=1"
+
+      CLANG_DIR: ${{ github.workspace }}/clang
+
       KBUILD_BUILD_USER: github-actions
       KBUILD_BUILD_HOST: github-actions
 
@@ -56,6 +70,7 @@ jobs:
             clang \
             curl \
             device-tree-compiler \
+            e2fsprogs \
             flex \
             git \
             libelf-dev \
@@ -71,29 +86,57 @@ jobs:
             zstd
 
       # ============================================================
-      # PROTON CLANG
+      # CLANG r563880c
       # ============================================================
 
-      - name: Clone Proton Clang
+      - name: Download Clang r563880c
         run: |
           set -e
 
-          git clone \
-            --depth=1 \
-            https://github.com/kdrag0n/proton-clang.git \
-            "$CLANG_DIR"
+          mkdir -p "$CLANG_DIR"
+
+          echo "===== CLANG SOURCE ====="
+          echo "$CLANG_SOURCE"
+
+          echo
+          echo "===== CLANG BRANCH ====="
+          echo "$CLANG_BRANCH"
+
+          echo
+          echo "===== DOWNLOAD CLANG ====="
+
+          wget -q \
+            "$CLANG_SOURCE" \
+            -O clang.tar.gz
+
+          test -s clang.tar.gz
+
+          echo
+          echo "===== CLANG ARCHIVE ====="
+          ls -lh clang.tar.gz
+
+          tar -xzf clang.tar.gz \
+            --strip-components=1 \
+            -C "$CLANG_DIR"
 
           test -x "$CLANG_DIR/bin/clang"
           test -x "$CLANG_DIR/bin/ld.lld"
 
           echo "$CLANG_DIR/bin" >> "$GITHUB_PATH"
 
-          echo "===== PROTON CLANG ====="
+          echo
+          echo "===== CLANG VERSION ====="
           "$CLANG_DIR/bin/clang" --version
+
+          echo
+          echo "===== LLD VERSION ====="
           "$CLANG_DIR/bin/ld.lld" --version
 
+          echo
+          echo "Clang r563880c: PASS"
+
       # ============================================================
-      # KERNELSU-NEXT
+      # VERIFY KERNELSU-NEXT
       # ============================================================
 
       - name: Verify KernelSU-Next
@@ -107,7 +150,7 @@ jobs:
           echo "KernelSU-Next: OK"
 
       # ============================================================
-      # SUSFS
+      # VERIFY SUSFS
       # ============================================================
 
       - name: Verify SUSFS
@@ -149,22 +192,48 @@ jobs:
           set -e
 
           echo "===== KernelSU hook implementation ====="
-          grep -n 'ksu_handle_faccessat' KernelSU-Next/kernel/feature/sucompat.c
-          grep -n 'ksu_handle_sys_reboot' KernelSU-Next/kernel/supercall/supercall.c
+
+          grep -n \
+            'ksu_handle_faccessat' \
+            KernelSU-Next/kernel/feature/sucompat.c
+
+          grep -n \
+            'ksu_handle_sys_reboot' \
+            KernelSU-Next/kernel/supercall/supercall.c
 
           echo
           echo "===== Kernel manual hook integration ====="
-          grep -n 'ksu_handle_faccessat' fs/open.c
-          grep -n 'ksu_handle_sys_reboot' kernel/reboot.c
 
-          test -n "$(grep -n 'ksu_handle_faccessat' KernelSU-Next/kernel/feature/sucompat.c)"
-          test -n "$(grep -n 'ksu_handle_sys_reboot' KernelSU-Next/kernel/supercall/supercall.c)"
-          test -n "$(grep -n 'ksu_handle_faccessat' fs/open.c)"
-          test -n "$(grep -n 'ksu_handle_sys_reboot' kernel/reboot.c)"
+          grep -n \
+            'ksu_handle_faccessat' \
+            fs/open.c
+
+          grep -n \
+            'ksu_handle_sys_reboot' \
+            kernel/reboot.c
+
+          test -n "$(grep -n \
+            'ksu_handle_faccessat' \
+            KernelSU-Next/kernel/feature/sucompat.c)"
+
+          test -n "$(grep -n \
+            'ksu_handle_sys_reboot' \
+            KernelSU-Next/kernel/supercall/supercall.c)"
+
+          test -n "$(grep -n \
+            'ksu_handle_faccessat' \
+            fs/open.c)"
+
+          test -n "$(grep -n \
+            'ksu_handle_sys_reboot' \
+            kernel/reboot.c)"
 
           echo
           echo "KernelSU manual hook integration: PASS"
-          echo "KernelSU-Next Kbuild source is authoritative for hook validation."
+
+      # ============================================================
+      # GENERATE DEFCONFIG
+      # ============================================================
 
       - name: Generate defconfig
         run: |
@@ -178,6 +247,7 @@ jobs:
             LLVM_IAS=1 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             KBUILD_DEFCONFIG="$DEFCONFIG" \
             defconfig
 
@@ -197,6 +267,7 @@ jobs:
             LLVM_IAS=1 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             olddefconfig
 
       # ============================================================
@@ -270,6 +341,7 @@ jobs:
             LLVM_IAS=1 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
@@ -319,14 +391,14 @@ jobs:
           DTB="out/arch/arm64/boot/dts/vendor/oscar/holi-oscar.dtb"
 
           echo "Checking target DTB:"
-          echo "${DTB}"
+          echo "$DTB"
 
-          if [ ! -f "${DTB}" ]; then
+          if [ ! -f "$DTB" ]; then
             echo "ERROR: Target Oscar DTB was not generated."
             exit 1
           fi
 
-          cp "${DTB}" artifacts/dtb
+          cp "$DTB" artifacts/dtb
 
           echo
           echo "Selected DTB:"
@@ -340,13 +412,18 @@ jobs:
         run: |
           set -e
 
+          mkdir -p artifacts
+
+          DTBO_DIR="out/arch/arm64/boot/dts/vendor/oscar"
+          DTBO_IMG="artifacts/dtbo.img"
+
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
 
             echo "Using out/arch/arm64/boot/dtbo.img"
 
             cp \
               out/arch/arm64/boot/dtbo.img \
-              artifacts/dtbo.img
+              "$DTBO_IMG"
 
           elif [ -f arch/arm64/boot/dtbo.img ]; then
 
@@ -354,35 +431,84 @@ jobs:
 
             cp \
               arch/arm64/boot/dtbo.img \
-              artifacts/dtbo.img
+              "$DTBO_IMG"
 
           else
 
-            echo "ERROR: No dtbo.img was produced."
-            echo
-            echo "Searching for DTBO files..."
-
-            find out/arch/arm64/boot/dts \
-              -type f \
-              \( -name '*.dtbo' -o -name '*overlay*.dtb' \) \
-              -print || true
+            echo "No prebuilt dtbo.img found."
+            echo "Building Oscar dtbo.img from generated DTBO files."
 
             echo
-            echo "A valid device-specific DTBO image definition"
-            echo "is required. The workflow will not create a"
-            echo "potentially invalid dtbo.img."
-            exit 1
+            echo "===== OSCAR DTBO FILES ====="
+
+            DTBO_FILES=(
+              "holi-oscar-21707-overlay.dtbo"
+              "holi-oscar-21708-overlay.dtbo"
+              "holi-oscar-21629-overlay.dtbo"
+              "holi-oscar-2162B-overlay.dtbo"
+              "holi-oscar-216E9-overlay.dtbo"
+              "holi-oscar-216EA-overlay.dtbo"
+              "holi-oscar-21141-21341-overlay-EVT.dtbo"
+              "holi-oscar-21141-21341-overlay-DVT.dtbo"
+              "holi-oscar-21141-21341-overlay-PVT-EU.dtbo"
+              "holi-oscar-21141-21341-overlay-PVT.dtbo"
+              "holi-oscar-21141-overlay-MP67w.dtbo"
+            )
+
+            DTBO_INPUTS=()
+
+            for dtbo in "${DTBO_FILES[@]}"; do
+              file="${DTBO_DIR}/${dtbo}"
+
+              if [ ! -f "$file" ]; then
+                echo "ERROR: Missing Oscar DTBO:"
+                echo "$file"
+                exit 1
+              fi
+
+              echo "FOUND: $file"
+              DTBO_INPUTS+=("$file")
+            done
+
+            echo
+            echo "All Oscar DTBO files found."
+
+            echo
+            echo "===== GET mkdtboimg.py ====="
+
+            wget -q \
+              "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/master/utils/src/mkdtboimg.py?format=TEXT" \
+              -O mkdtboimg.b64
+
+            base64 -d mkdtboimg.b64 > mkdtboimg.py
+            chmod +x mkdtboimg.py
+
+            python3 mkdtboimg.py --help >/dev/null
+
+            echo "mkdtboimg.py: PASS"
+
+            echo
+            echo "===== CREATE DTBO.IMG ====="
+
+            python3 mkdtboimg.py create \
+              --page_size=4096 \
+              "$DTBO_IMG" \
+              "${DTBO_INPUTS[@]}"
 
           fi
 
-          test -s artifacts/dtbo.img
+          test -s "$DTBO_IMG"
 
           echo
-          echo "DTBO:"
-          ls -lh artifacts/dtbo.img
+          echo "===== DTBO ====="
+          ls -lh "$DTBO_IMG"
+          file "$DTBO_IMG"
+
+          echo
+          echo "DTBO image successfully created."
 
       # ============================================================
-      # MODULES
+      # BUILD KERNEL MODULES
       # ============================================================
 
       - name: Build kernel modules
@@ -398,7 +524,15 @@ jobs:
             LLVM_IAS=1 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
             modules
+
+          rm -rf "$GITHUB_WORKSPACE/modules"
 
           make \
             ARCH="$ARCH" \
@@ -408,31 +542,217 @@ jobs:
             LLVM_IAS=1 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
             INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
             modules_install
 
+          echo
+          echo "===== INSTALLED MODULES ====="
+
+          find "$GITHUB_WORKSPACE/modules" \
+            -type f \
+            -name '*.ko' \
+            -print
+
       # ============================================================
-      # COLLECT RAW FILES
+      # BUILD vendor_dlkm.img
+      #
+      # This creates an ext4 image containing the modules installed
+      # by modules_install.
       # ============================================================
 
-      - name: Collect raw kernel files
+      - name: Build vendor_dlkm.img
         run: |
           set -e
 
-          cp \
-            out/arch/arm64/boot/Image \
-            artifacts/Image
+          MODULE_ROOT="$GITHUB_WORKSPACE/modules"
+          VENDOR_DLKM_ROOT="$GITHUB_WORKSPACE/vendor_dlkm"
+          VENDOR_DLKM_IMG="$GITHUB_WORKSPACE/artifacts/vendor_dlkm.img"
+
+          rm -rf "$VENDOR_DLKM_ROOT"
+          mkdir -p "$VENDOR_DLKM_ROOT"
+
+          echo "===== MODULE TREE ====="
+
+          find "$MODULE_ROOT" \
+            -type f \
+            -name '*.ko' \
+            -print
+
+          KO_COUNT="$(find "$MODULE_ROOT" -type f -name '*.ko' | wc -l)"
+
+          if [ "$KO_COUNT" -eq 0 ]; then
+            echo "ERROR: No kernel modules were produced."
+            exit 1
+          fi
+
+          echo
+          echo "Kernel modules found: $KO_COUNT"
+
+          # vendor_dlkm image contents
+          mkdir -p "$VENDOR_DLKM_ROOT/lib/modules"
+
+          if [ -d "$MODULE_ROOT/lib/modules" ]; then
+            cp -a \
+              "$MODULE_ROOT/lib/modules/." \
+              "$VENDOR_DLKM_ROOT/lib/modules/"
+          else
+            echo "ERROR: modules_install did not create lib/modules."
+            exit 1
+          fi
+
+          # Preserve module metadata generated by modules_install.
+          find "$VENDOR_DLKM_ROOT/lib/modules" \
+            -type f \
+            -maxdepth 3 \
+            -print
+
+          echo
+          echo "===== PREPARE MODULE DEPENDENCIES ====="
+
+          if command -v depmod >/dev/null 2>&1; then
+            MODULE_DIR="$(find "$VENDOR_DLKM_ROOT/lib/modules" \
+              -mindepth 1 \
+              -maxdepth 1 \
+              -type d \
+              -print -quit)"
+
+            if [ -n "$MODULE_DIR" ]; then
+              KERNEL_RELEASE="$(basename "$MODULE_DIR")"
+
+              echo "Kernel release: $KERNEL_RELEASE"
+
+              depmod \
+                -b "$VENDOR_DLKM_ROOT" \
+                "$KERNEL_RELEASE" || true
+            fi
+          fi
+
+          echo
+          echo "===== CALCULATE vendor_dlkm SIZE ====="
+
+          USED_KB="$(du -sk "$VENDOR_DLKM_ROOT" | awk '{print $1}')"
+
+          # Add 50% headroom plus 16 MiB minimum metadata space.
+          EXTRA_KB=$((USED_KB / 2))
+
+          if [ "$EXTRA_KB" -lt 16384 ]; then
+            EXTRA_KB=16384
+          fi
+
+          IMAGE_KB=$((USED_KB + EXTRA_KB))
+
+          # Round up to 4 MiB.
+          IMAGE_KB=$(( (IMAGE_KB + 4095) / 4096 * 4096 ))
+
+          echo "Used: ${USED_KB} KiB"
+          echo "Image: ${IMAGE_KB} KiB"
+
+          if [ "$IMAGE_KB" -lt 32768 ]; then
+            IMAGE_KB=32768
+          fi
+
+          echo
+          echo "===== CREATE vendor_dlkm.img ====="
+
+          truncate \
+            -s "${IMAGE_KB}K" \
+            "$VENDOR_DLKM_IMG"
+
+          mkfs.ext4 \
+            -F \
+            -L vendor_dlkm \
+            -m 0 \
+            "$VENDOR_DLKM_IMG"
+
+          echo
+          echo "===== POPULATE vendor_dlkm.img ====="
+
+          e2fsck \
+            -fy \
+            "$VENDOR_DLKM_IMG"
+
+          debugfs \
+            -w \
+            -R "rdump $VENDOR_DLKM_ROOT /" \
+            "$VENDOR_DLKM_IMG" || true
+
+          # Populate using fuse2fs if available; otherwise use a loop mount.
+          if command -v fuse2fs >/dev/null 2>&1; then
+
+            MOUNT_POINT="$GITHUB_WORKSPACE/vendor_dlkm_mount"
+
+            rm -rf "$MOUNT_POINT"
+            mkdir -p "$MOUNT_POINT"
+
+            fuse2fs \
+              -o rw+ \
+              "$VENDOR_DLKM_IMG" \
+              "$MOUNT_POINT"
+
+            cp -a \
+              "$VENDOR_DLKM_ROOT/." \
+              "$MOUNT_POINT/"
+
+            sync
+
+            fusermount -u "$MOUNT_POINT" || \
+              fusermount3 -u "$MOUNT_POINT" || true
+
+          else
+
+            sudo mkdir -p /mnt/vendor_dlkm
+
+            sudo mount \
+              -o loop \
+              "$VENDOR_DLKM_IMG" \
+              /mnt/vendor_dlkm
+
+            sudo cp -a \
+              "$VENDOR_DLKM_ROOT/." \
+              /mnt/vendor_dlkm/
+
+            sync
+
+            sudo umount /mnt/vendor_dlkm
+
+          fi
+
+          e2fsck \
+            -fy \
+            "$VENDOR_DLKM_IMG"
+
+          test -s "$VENDOR_DLKM_IMG"
+
+          echo
+          echo "===== vendor_dlkm.img ====="
+
+          ls -lh "$VENDOR_DLKM_IMG"
+          file "$VENDOR_DLKM_IMG"
+
+          echo
+          echo "vendor_dlkm.img: PASS"
+
+      # ============================================================
+      # VERIFY RAW FILES
+      # ============================================================
+
+      - name: Verify raw kernel files
+        run: |
+          set -e
 
           test -s artifacts/Image
           test -s artifacts/dtb
           test -s artifacts/dtbo.img
+          test -s artifacts/vendor_dlkm.img
 
           echo "===== RAW ARTIFACTS ====="
 
           ls -lh \
             artifacts/Image \
             artifacts/dtb \
-            artifacts/dtbo.img
+            artifacts/dtbo.img \
+            artifacts/vendor_dlkm.img
 
       # ============================================================
       # CLONE ANYKERNEL3
@@ -469,7 +789,8 @@ jobs:
             Image-dtb.gz \
             dtb \
             dtbo \
-            dtbo.img
+            dtbo.img \
+            vendor_dlkm.img
 
           rm -rf \
             ramdisk \
@@ -479,13 +800,18 @@ jobs:
           cp ../artifacts/Image Image
           cp ../artifacts/dtb dtb
           cp ../artifacts/dtbo.img dtbo.img
+          cp ../artifacts/vendor_dlkm.img vendor_dlkm.img
 
           test -s Image
           test -s dtb
           test -s dtbo.img
+          test -s vendor_dlkm.img
 
           if find . -maxdepth 1 -type f \
-              \( -name 'Image-dtb' -o -name 'Image-dtb.gz' \); then
+              \( \
+                -name 'Image-dtb' \
+                -o -name 'Image-dtb.gz' \
+              \); then
             echo "ERROR: Image-dtb detected."
             exit 1
           fi
@@ -495,7 +821,8 @@ jobs:
           ls -lh \
             Image \
             dtb \
-            dtbo.img
+            dtbo.img \
+            vendor_dlkm.img
 
           cd ..
 
@@ -534,6 +861,21 @@ jobs:
           dump_boot
 
           write_boot
+
+          # Flash vendor_dlkm image when the device exposes the
+          # expected by-name partition.
+          VENDOR_DLKM_BLOCK="/dev/block/by-name/vendor_dlkm"
+
+          if [ -e "$VENDOR_DLKM_BLOCK" ]; then
+            ui_print " "
+            ui_print "Flashing vendor_dlkm.img..."
+            write_raw_image vendor_dlkm.img "$VENDOR_DLKM_BLOCK"
+            ui_print "vendor_dlkm: flashed"
+          else
+            ui_print " "
+            ui_print "WARNING: vendor_dlkm partition not found."
+            ui_print "vendor_dlkm.img kept in ZIP but not flashed."
+          fi
           AK3EOF
 
           chmod 755 AnyKernel3/anykernel.sh
@@ -553,6 +895,7 @@ jobs:
           test -f AnyKernel3/Image
           test -f AnyKernel3/dtb
           test -f AnyKernel3/dtbo.img
+          test -f AnyKernel3/vendor_dlkm.img
 
           if [ -f AnyKernel3/Image.gz ]; then
             echo "ERROR: Image.gz exists in AnyKernel3."
@@ -619,6 +962,9 @@ jobs:
           unzip -l "$ZIP" | grep -Eq \
             '(^|[[:space:]])dtbo\.img$'
 
+          unzip -l "$ZIP" | grep -Eq \
+            '(^|[[:space:]])vendor_dlkm\.img$'
+
           if unzip -l "$ZIP" | grep -Eq \
               'Image-dtb(\.gz)?'; then
             echo "ERROR: Image-dtb found in final ZIP."
@@ -647,7 +993,12 @@ jobs:
           {
             echo "Kernel: Realme SM6375"
             echo "Branch: oscar"
-            echo "Compiler: Proton Clang"
+            echo "Compiler: Clang r563880c"
+            echo "Clang source: $CLANG_SOURCE"
+            echo "Clang branch: $CLANG_BRANCH"
+            echo "GCC_GNU: $GCC_GNU"
+            echo "CUSTOM_CMDS: $CUSTOM_CMDS"
+            echo "EXTRA_CMDS: $EXTRA_CMDS"
             echo "KernelSU: KernelSU-Next Legacy"
             echo "SUSFS: v2.3.0"
             echo "Defconfig: vendor/holi-qgki_defconfig"
@@ -656,6 +1007,7 @@ jobs:
             ls -lh artifacts/Image
             ls -lh artifacts/dtb
             ls -lh artifacts/dtbo.img
+            ls -lh artifacts/vendor_dlkm.img
             echo
             echo "AnyKernel3:"
             ls -lh AnyKernel3-Realme-SM6375.zip
@@ -675,5 +1027,6 @@ jobs:
             artifacts/Image
             artifacts/dtb
             artifacts/dtbo.img
+            artifacts/vendor_dlkm.img
             artifacts/build-info.txt
             AnyKernel3-Realme-SM6375.zip
