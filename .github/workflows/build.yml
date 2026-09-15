@@ -106,32 +106,41 @@ jobs:
 
           echo
           echo "===== LOCATE PROTON CLANG ====="
-          CLANG_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/clang' -executable | head -n 1)"
-          LLD_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/ld.lld' -executable | head -n 1)"
-          CROSS_LD="$(find "$CLANG_DIR" -type f -path '*/bin/aarch64-linux-gnu-ld' -executable | head -n 1)"
+
+          CLANG_BIN_DIR="$CLANG_DIR/bin"
+          CLANG_BIN="$CLANG_BIN_DIR/clang"
+          LLD_BIN="$CLANG_BIN_DIR/ld.lld"
+          CROSS_LD="$CLANG_BIN_DIR/aarch64-linux-gnu-ld"
 
           echo "CLANG_BIN=$CLANG_BIN"
           echo "LLD_BIN=$LLD_BIN"
           echo "CROSS_LD=$CROSS_LD"
 
-          test -n "$CLANG_BIN"
-          test -n "$LLD_BIN"
-          test -n "$CROSS_LD"
+          test -d "$CLANG_BIN_DIR"
+          test -e "$CLANG_BIN"
+          test -e "$LLD_BIN"
+          test -e "$CROSS_LD"
 
-          CLANG_BIN_DIR="$(dirname "$CLANG_BIN")"
           echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
+          export PATH="$CLANG_BIN_DIR:$PATH"
+
+          echo
+          echo "===== VERIFY PROTON CLANG COMMANDS ====="
+          command -v clang
+          command -v ld.lld
+          command -v aarch64-linux-gnu-ld
 
           echo
           echo "===== PROTON CLANG VERSION ====="
-          "$CLANG_BIN" --version
+          clang --version
 
           echo
           echo "===== LLD VERSION ====="
-          "$LLD_BIN" --version
+          ld.lld --version
 
           echo
           echo "===== AARCH64 GNU LD VERSION ====="
-          "$CROSS_LD" --version
+          aarch64-linux-gnu-ld --version
 
           echo
           echo "Proton Clang: PASS"
