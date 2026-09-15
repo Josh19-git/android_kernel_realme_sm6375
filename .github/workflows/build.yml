@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - github-actions
+      - oscar
 
 jobs:
   build:
@@ -113,4 +113,80 @@ jobs:
         run: |
           set -e
 
-          echo "===== RE
+          echo "===== REBOOT HOOK ====="
+          grep -n -B2 -A5 "ksu_handle_sys_reboot" kernel/reboot.c
+
+          echo
+          echo "===== FACCESSAT HOOK ====="
+          grep -n -B2 -A5 "ksu_handle_faccessat" fs/open.c
+
+          grep -q "ksu_handle_sys_reboot" kernel/reboot.c
+          grep -q "ksu_handle_faccessat" fs/open.c
+
+          echo
+          echo "KernelSU manual hooks: PASS"
+
+      - name: Verify KernelSU Kbuild hook requirement
+        run: |
+          set -e
+
+          HAVE_KSU_HOOK=1
+
+          if grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
+            HAVE_KSU_HOOK=0
+          fi
+
+          echo "HAVE_KSU_HOOK=${HAVE_KSU_HOOK}"
+
+          if [ "${HAVE_KSU_HOOK}" -eq 0 ]; then
+            echo "KBUILD HOOK TEST: PASS"
+          else
+            echo "KBUILD HOOK TEST: FAIL"
+            exit 1
+          fi
+
+      - name: Build kernel
+        run: |
+          set -e
+
+          make -j"$(nproc)" \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            Image.gz \
+            dtbs \
+            modules
+
+      - name: Collect build artifacts
+        if: success()
+        run: |
+          set -e
+
+          rm -rf artifacts
+          mkdir -p artifacts
+
+          cp arch/arm64/boot/Image artifacts/ 2>/dev/null || true
+          cp arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
+          cp System.map artifacts/ 2>/dev/null || true
+          cp Module.symvers artifacts/ 2>/dev/null || true
+          cp vmlinux artifacts/ 2>/dev/null || true
+
+          if [ -d arch/arm64/boot/dts ]; then
+            find arch/arm64/boot/dts -type f \
+              \( -name '*.dtb' -o -name '*.dtbo' \) \
+              -exec cp --parents {} artifacts/ \;
+          fi
+
+          find . -type f -name '*.ko' \
+            -not -path './artifacts/*' \
+            -exec cp --parents {} artifacts/ \;
+
+          echo "===== BUILD ARTIFACTS ====="
+          find artifacts -type f -print
+
+      - name: Upload kernel artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: realme-sm6375-kernel
+          path: artifacts/
+          if-no-files-found: error
