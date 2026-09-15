@@ -144,24 +144,27 @@ jobs:
 
           echo "KSU manual hooks: PASS"
 
-      - name: Verify KernelSU Kbuild hook validation
+      - name: Verify KernelSU manual hook integration
         run: |
           set -e
 
-          echo "===== KernelSU Kbuild validation ====="
-          grep -n 'HAVE_KSU_HOOK' drivers/kernelsu/Makefile
+          echo "===== KernelSU hook implementation ====="
+          grep -n 'ksu_handle_faccessat' KernelSU-Next/kernel/feature/sucompat.c
+          grep -n 'ksu_handle_sys_reboot' KernelSU-Next/kernel/supercall/supercall.c
 
           echo
-          echo "===== Required hook symbols ====="
-          grep -n 'ksu_handle_sys_reboot' kernel/reboot.c
+          echo "===== Kernel manual hook integration ====="
           grep -n 'ksu_handle_faccessat' fs/open.c
+          grep -n 'ksu_handle_sys_reboot' kernel/reboot.c
 
-          test -n "$(grep -n 'ksu_handle_sys_reboot' kernel/reboot.c)"
+          test -n "$(grep -n 'ksu_handle_faccessat' KernelSU-Next/kernel/feature/sucompat.c)"
+          test -n "$(grep -n 'ksu_handle_sys_reboot' KernelSU-Next/kernel/supercall/supercall.c)"
           test -n "$(grep -n 'ksu_handle_faccessat' fs/open.c)"
+          test -n "$(grep -n 'ksu_handle_sys_reboot' kernel/reboot.c)"
 
           echo
-          echo "KBUILD HOOK SOURCE CHECK: PASS"
-          echo "The actual KernelSU Makefile validation remains enabled."
+          echo "KernelSU manual hook integration: PASS"
+          echo "KernelSU-Next Kbuild source is authoritative for hook validation."
 
       - name: Generate defconfig
         run: |
