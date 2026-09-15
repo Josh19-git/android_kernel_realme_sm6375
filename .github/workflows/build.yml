@@ -114,7 +114,7 @@ jobs:
         run: |
           set -e
 
-          grep -q '#define SUSFS_VERSION "v2.3.0"' fs/susfs.c
+          grep -q '#define SUSFS_VERSION "v2.3.0"' include/linux/susfs.h
 
           test -f fs/susfs.c
           test -f include/linux/susfs.h
