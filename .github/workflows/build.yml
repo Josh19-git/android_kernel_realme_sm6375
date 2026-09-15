@@ -1,4 +1,4 @@
-name: Realme SM6375 Kernel - Clang r563880c + KSU-Next + SUSFS
+name: Realme SM6375 Kernel - Snapdragon LLVM 10.0.9 + KSU-Next + SUSFS
 
 on:
   workflow_dispatch:
@@ -22,15 +22,10 @@ jobs:
       KSU_VERSION: KernelSU-Next Legacy
       SUSFS_VERSION: v2.3.0
 
-      CLANG_SOURCE: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-16.0.0_r4/clang-r563880c.tar.gz"
+      CLANG_SOURCE: "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz"
 
-      GCC_GNU: false
-      GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
-      GCC_64_BRANCH: "android12L-release"
-      GCC_32_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9.git"
-      GCC_32_BRANCH: "android12L-release"
 
-      CUSTOM_CMDS: "CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu-"
+      CUSTOM_CMDS: ""
       EXTRA_CMDS: "LLVM=1 LLVM_IAS=1"
 
       CLANG_DIR: ${{ github.workspace }}/clang
@@ -85,10 +80,10 @@ jobs:
             zstd
 
       # ============================================================
-      # CLANG r563880c
+      # SNAPDRAGON LLVM 10.0.9
       # ============================================================
 
-      - name: Download Clang r563880c
+      - name: Download Snapdragon LLVM 10.0.9
         run: |
           set -e
 
@@ -131,7 +126,7 @@ jobs:
           "$CLANG_DIR/bin/ld.lld" --version
 
           echo
-          echo "Clang r563880c: PASS"
+          echo "Snapdragon LLVM 10.0.9: PASS"
 
       - name: Verify KernelSU-Next
         run: |
@@ -240,8 +235,6 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             KBUILD_DEFCONFIG="$DEFCONFIG" \
             defconfig
 
@@ -260,8 +253,6 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             olddefconfig
 
       # ============================================================
@@ -334,8 +325,6 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
@@ -517,8 +506,6 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
@@ -535,8 +522,6 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
             modules_install
 
@@ -934,9 +919,8 @@ jobs:
           {
             echo "Kernel: Realme SM6375"
             echo "Branch: oscar"
-            echo "Compiler: Clang r563880c"
+            echo "Compiler: Snapdragon LLVM 10.0.9"
             echo "Clang source: $CLANG_SOURCE"
-            echo "Clang branch: $CLANG_BRANCH"
             echo "GCC_GNU: $GCC_GNU"
             echo "CUSTOM_CMDS: $CUSTOM_CMDS"
             echo "EXTRA_CMDS: $EXTRA_CMDS"
