@@ -22,8 +22,7 @@ jobs:
       KSU_VERSION: KernelSU-Next Legacy
       SUSFS_VERSION: v2.3.0
 
-      CLANG_SOURCE: "https://github.com/bachnxuan/aosp_clang_mirror/releases/download/clang-r563880c-13989888/clang-r563880c.tar.gz"
-      CLANG_BRANCH: "lineage-20.0"
+      CLANG_SOURCE: "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-16.0.0_r4/clang-r563880c.tar.gz"
 
       GCC_GNU: false
       GCC_64_SOURCE: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9.git"
@@ -93,19 +92,16 @@ jobs:
         run: |
           set -e
 
+          rm -rf "$CLANG_DIR"
           mkdir -p "$CLANG_DIR"
 
           echo "===== CLANG SOURCE ====="
           echo "$CLANG_SOURCE"
-
           echo
-          echo "===== CLANG BRANCH ====="
-          echo "$CLANG_BRANCH"
 
-          echo
           echo "===== DOWNLOAD CLANG ====="
 
-          wget -q \
+          wget -q --show-progress \
             "$CLANG_SOURCE" \
             -O clang.tar.gz
 
@@ -115,8 +111,10 @@ jobs:
           echo "===== CLANG ARCHIVE ====="
           ls -lh clang.tar.gz
 
+          echo
+          echo "===== EXTRACT CLANG ====="
+
           tar -xzf clang.tar.gz \
-            --strip-components=1 \
             -C "$CLANG_DIR"
 
           test -x "$CLANG_DIR/bin/clang"
@@ -134,10 +132,6 @@ jobs:
 
           echo
           echo "Clang r563880c: PASS"
-
-      # ============================================================
-      # VERIFY KERNELSU-NEXT
-      # ============================================================
 
       - name: Verify KernelSU-Next
         run: |
