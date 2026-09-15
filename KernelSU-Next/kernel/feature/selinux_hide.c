@@ -38,23 +38,30 @@ extern struct selinux_state selinux_state;
 // enabled by default
 static bool ksu_selinux_hide_is_enabled __read_mostly = true;
 
-static u32 ksu_sid __read_mostly = 0;
-static u32 priv_app_sid __read_mostly = 0;
+#ifdef CONFIG_KSU_SUSFS
+u32 susfs_ksu_sid __read_mostly = 0;
+u32 susfs_priv_app_sid __read_mostly = 0;
+
+bool susfs_is_current_ksu_domain(void)
+{
+        return is_ksu_domain();
+}
+#endif
 
 static int ksu_selinux_get_sids(void)
 {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
-	int err1 = security_context_to_sid("u:r:ksu:s0", strlen("u:r:ksu:s0"), &ksu_sid, GFP_KERNEL);
-    int err2 = security_context_to_sid("u:r:priv_app:s0:c512,c768", 
-                                       strlen("u:r:priv_app:s0:c512,c768"), &priv_app_sid, GFP_KERNEL);
+        int err1 = security_context_to_sid("u:r:ksu:s0", strlen("u:r:ksu:s0"), &susfs_ksu_sid, GFP_KERNEL);
+        int err2 = security_context_to_sid("u:r:priv_app:s0:c512,c768",
+                                           strlen("u:r:priv_app:s0:c512,c768"), &susfs_priv_app_sid, GFP_KERNEL);
 #else
-	int err1 = security_secctx_to_secid("u:r:ksu:s0", strlen("u:r:ksu:s0"), &ksu_sid);
-	int err2 = security_secctx_to_secid("u:r:priv_app:s0:c512,c768",
-					     strlen("u:r:priv_app:s0:c512,c768"), &priv_app_sid);
+        int err1 = security_secctx_to_secid("u:r:ksu:s0", strlen("u:r:ksu:s0"), &susfs_ksu_sid);
+        int err2 = security_secctx_to_secid("u:r:priv_app:s0:c512,c768",
+                                            strlen("u:r:priv_app:s0:c512,c768"), &susfs_priv_app_sid);
 #endif
-	if (!err1) pr_info("ksu_selinux_hide: ksu_sid=%u\n", ksu_sid);
-	if (!err2) pr_info("ksu_selinux_hide: priv_app_sid=%u\n", priv_app_sid);
-	return (!ksu_sid || !priv_app_sid) ? -1 : 0;
+        if (!err1) pr_info("ksu_selinux_hide: susfs_ksu_sid=%u\n", susfs_ksu_sid);
+        if (!err2) pr_info("ksu_selinux_hide: susfs_priv_app_sid=%u\n", susfs_priv_app_sid);
+        return (!susfs_ksu_sid || !susfs_priv_app_sid) ? -1 : 0;
 }
 
 static void ksu_selinux_hide_enable(void)
