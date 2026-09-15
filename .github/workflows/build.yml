@@ -316,30 +316,17 @@ jobs:
 
           mkdir -p artifacts
 
-          mapfile -t DTBS < <(
-            find out/arch/arm64/boot/dts \
-              -type f \
-              -name '*.dtb' \
-              -print
-          )
+          DTB="out/arch/arm64/boot/dts/vendor/oscar/holi-oscar.dtb"
 
-          echo "Found ${#DTBS[@]} DTB files."
+          echo "Checking target DTB:"
+          echo "${DTB}"
 
-          printf '%s\n' "${DTBS[@]}"
-
-          if [ "${#DTBS[@]}" -eq 0 ]; then
-            echo "ERROR: No DTB was generated."
+          if [ ! -f "${DTB}" ]; then
+            echo "ERROR: Target Oscar DTB was not generated."
             exit 1
           fi
 
-          if [ "${#DTBS[@]}" -gt 1 ]; then
-            echo
-            echo "ERROR: More than one DTB was generated."
-            echo "The workflow will not arbitrarily choose one."
-            exit 1
-          fi
-
-          cp "${DTBS[0]}" artifacts/dtb
+          cp "${DTB}" artifacts/dtb
 
           echo
           echo "Selected DTB:"
