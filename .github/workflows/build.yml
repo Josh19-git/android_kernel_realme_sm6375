@@ -1,0 +1,116 @@
+name: Build Realme SM6375 Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - github-actions
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout kernel
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc \
+            bison \
+            build-essential \
+            ccache \
+            flex \
+            gcc-aarch64-linux-gnu \
+            libelf-dev \
+            libssl-dev \
+            python3 \
+            python3-pip \
+            rsync \
+            unzip \
+            zip
+
+      - name: Verify KernelSU-Next
+        run: |
+          set -e
+
+          test -d KernelSU-Next/kernel
+          test -f KernelSU-Next/kernel/Kconfig
+          test -f KernelSU-Next/kernel/Makefile
+          test -L drivers/kernelsu
+
+          TARGET="$(readlink drivers/kernelsu)"
+
+          echo "KernelSU-Next directory: OK"
+          echo "drivers/kernelsu -> ${TARGET}"
+
+          test "${TARGET}" = "../KernelSU-Next/kernel"
+
+          echo "KernelSU-Next symlink: OK"
+
+      - name: Verify SUSFS source
+        run: |
+          set -e
+
+          test -f fs/susfs.c
+          test -f include/linux/susfs.h
+          test -f include/linux/susfs_def.h
+
+          grep -q 'SUSFS_VERSION "v2.3.0"' include/linux/susfs.h
+          grep -q 'obj-\$(CONFIG_KSU_SUSFS) += susfs.o' fs/Makefile
+
+          echo "SUSFS source: OK"
+          echo "SUSFS version: v2.3.0"
+
+      - name: Configure kernel
+        run: |
+          set -e
+
+          make ARCH=arm64 \
+            KBUILD_DEFCONFIG=vendor/holi-qgki_defconfig \
+            defconfig
+
+          make ARCH=arm64 olddefconfig
+
+      - name: Verify KSU and SUSFS configuration
+        run: |
+          set -e
+
+          configs="
+          CONFIG_KSU=y
+          CONFIG_KSU_MANUAL_HOOK=y
+          CONFIG_KSU_SUSFS=y
+          CONFIG_KSU_SUSFS_SUS_PATH=y
+          CONFIG_KSU_SUSFS_SUS_MOUNT=y
+          CONFIG_KSU_SUSFS_SUS_KSTAT=y
+          CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+          CONFIG_KSU_SUSFS_ENABLE_LOG=y
+          CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+          CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+          CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+          CONFIG_KSU_SUSFS_SUS_MAP=y
+          "
+
+          echo "===== KSU/SUSFS CONFIGURATION ====="
+
+          while IFS= read -r config; do
+            [ -z "$config" ] && continue
+
+            if grep -qx "$config" .config; then
+              echo "PASS: $config"
+            else
+              echo "FAIL: $config"
+              exit 1
+            fi
+          done <<< "$configs"
+
+      - name: Verify KernelSU manual hooks
+        run: |
+          set -e
+
+          echo "===== RE
