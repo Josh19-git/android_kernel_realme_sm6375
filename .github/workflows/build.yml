@@ -85,6 +85,23 @@ jobs:
       # SNAPDRAGON LLVM 10.0.9
       # ============================================================
 
+      - name: Install LLVM 10 runtime dependencies
+        run: |
+          set -e
+
+          echo "===== INSTALL LLVM 10 RUNTIME ====="
+
+          sudo apt-get update
+          sudo apt-get install -y libtinfo5
+
+          echo
+          echo "===== VERIFY LIBTINFO ====="
+          ldconfig -p | grep 'libtinfo.so.5'
+
+          test -e /usr/lib/x86_64-linux-gnu/libtinfo.so.5
+
+          echo "libtinfo.so.5: PASS"
+
       - name: Download Snapdragon LLVM 10.0.9
         run: |
           set -e
