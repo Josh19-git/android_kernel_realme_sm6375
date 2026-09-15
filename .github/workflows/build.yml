@@ -1,4 +1,4 @@
-name: Realme SM6375 Kernel - Snapdragon LLVM 10.0.9 + KSU-Next + SUSFS
+name: Realme SM6375 Kernel - Proton Clang + KSU-Next + SUSFS
 
 on:
   workflow_dispatch:
@@ -21,16 +21,12 @@ jobs:
       KERNEL_NAME: Realme-SM6375-Kernel
       KSU_VERSION: KernelSU-Next Legacy
       SUSFS_VERSION: v2.3.0
-
-      CLANG_SOURCE: "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz"
-      GNU_SOURCE: "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
+      CLANG_SOURCE: "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
 
 
       CUSTOM_CMDS: ""
       EXTRA_CMDS: "LLVM=1 LLVM_IAS=1"
-
-      CLANG_DIR: ${{ github.workspace }}/clang
-      GNU_DIR: ${{ github.workspace }}/gnu
+      CLANG_DIR: ${{ github.workspace }}/proton-clang
 
       KBUILD_BUILD_USER: github-actions
       KBUILD_BUILD_HOST: github-actions
@@ -82,81 +78,69 @@ jobs:
             zstd
 
       # ============================================================
-      # SNAPDRAGON LLVM 10.0.9
+      # PROTON CLANG
       # ============================================================
 
-      - name: Install LLVM 10 runtime dependencies
+      - name: Download Proton Clang
         run: |
           set -e
 
-          echo "===== INSTALL LLVM 10 RUNTIME ====="
-
-          sudo apt-get update
-          sudo apt-get install -y             libtinfo5             libc6-dev             build-essential
-
-          echo
-          echo "===== VERIFY LIBTINFO ====="
-          ldconfig -p | grep 'libtinfo.so.5'
-
-          test -e /usr/lib/x86_64-linux-gnu/libtinfo.so.5
-
-          echo "libtinfo.so.5: PASS"
-
-      - name: Download Snapdragon LLVM 10.0.9
-        run: |
-          set -e
+          echo "===== PROTON CLANG ====="
 
           rm -rf "$CLANG_DIR"
           mkdir -p "$CLANG_DIR"
 
-          echo "===== CLANG SOURCE ====="
+          echo "===== PROTON CLANG SOURCE ====="
           echo "$CLANG_SOURCE"
           echo
 
-          echo "===== DOWNLOAD CLANG ====="
+          echo "===== DOWNLOAD PROTON CLANG ====="
 
           wget -q --show-progress \
             "$CLANG_SOURCE" \
-            -O clang.tar.gz
+            -O proton-clang.tar.gz
 
-          test -s clang.tar.gz
-
-          echo
-          echo "===== CLANG ARCHIVE ====="
-          ls -lh clang.tar.gz
+          test -s proton-clang.tar.gz
 
           echo
-          echo "===== VERIFY CLANG ARCHIVE ====="
-
-          file clang.tar.gz
-          tar -tzf clang.tar.gz >/dev/null
-
-          echo "Clang archive integrity: PASS"
+          echo "===== PROTON CLANG ARCHIVE ====="
+          ls -lh proton-clang.tar.gz
 
           echo
-          echo "===== EXTRACT CLANG ====="
+          echo "===== VERIFY PROTON CLANG ARCHIVE ====="
 
-          tar -xzf clang.tar.gz \
+          file proton-clang.tar.gz
+          tar -tzf proton-clang.tar.gz >/dev/null
+
+          echo "Proton Clang archive integrity: PASS"
+
+          echo
+          echo "===== EXTRACT PROTON CLANG ====="
+
+          tar -xzf proton-clang.tar.gz \
             -C "$CLANG_DIR"
 
           echo
-          echo "===== LOCATE CLANG ====="
+          echo "===== LOCATE PROTON CLANG ====="
 
-          CLANG_BIN="$(find "$CLANG_DIR" -type f -name clang -executable | head -n 1)"
-          LLD_BIN="$(find "$CLANG_DIR" -type f -name ld.lld -executable | head -n 1)"
+          CLANG_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/clang' -executable | head -n 1)"
+          LLD_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/ld.lld' -executable | head -n 1)"
+          CROSS_LD="$(find "$CLANG_DIR" -type f -path '*/bin/aarch64-linux-gnu-ld' -executable | head -n 1)"
 
           echo "CLANG_BIN=$CLANG_BIN"
           echo "LLD_BIN=$LLD_BIN"
+          echo "CROSS_LD=$CROSS_LD"
 
           test -n "$CLANG_BIN"
           test -n "$LLD_BIN"
+          test -n "$CROSS_LD"
 
           CLANG_BIN_DIR="$(dirname "$CLANG_BIN")"
 
           echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
 
           echo
-          echo "===== CLANG VERSION ====="
+          echo "===== PROTON CLANG VERSION ====="
           "$CLANG_BIN" --version
 
           echo
@@ -164,56 +148,12 @@ jobs:
           "$LLD_BIN" --version
 
           echo
-          echo "Snapdragon LLVM 10.0.9: PASS"
+          echo "===== AARCH64 GNU LD VERSION ====="
+          "$CROSS_LD" --version
 
           echo
-
-      # ============================================================
-      # ARM GNU TOOLCHAIN 14.2
-      # ============================================================
-
-      - name: Download ARM GNU 14.2
-        run: |
-          set -e
-
-          rm -rf "$GNU_DIR"
-          mkdir -p "$GNU_DIR"
-
-          echo "===== GNU SOURCE ====="
-          echo "$GNU_SOURCE"
-          echo
-
-          echo "===== DOWNLOAD ARM GNU ====="
-
-          wget -q --show-progress             "$GNU_SOURCE"             -O arm-gnu.tar.xz
-
-          test -s arm-gnu.tar.xz
-
-          echo
-          echo "===== GNU ARCHIVE ====="
-          ls -lh arm-gnu.tar.xz
-
-          echo
-          echo "===== EXTRACT ARM GNU ====="
-
-          tar -xJf arm-gnu.tar.xz             -C "$GNU_DIR"             --strip-components=1
-
-          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-gcc"
-          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-ld"
-          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-as"
-          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-ar"
-
-          echo "$GNU_DIR/bin" >> "$GITHUB_PATH"
-
-          echo
-          echo "===== ARM GNU VERSION ====="
-
-          "$GNU_DIR/bin/aarch64-none-linux-gnu-gcc" --version
-          "$GNU_DIR/bin/aarch64-none-linux-gnu-ld" --version | head -n 1
-          "$GNU_DIR/bin/aarch64-none-linux-gnu-as" --version | head -n 1
-
-          echo
-          echo "ARM GNU 14.2: PASS"
+          echo "Proton Clang: PASS"
+          echo "AArch64 binutils: PASS"
 
       - name: Verify KernelSU-Next
         run: |
@@ -321,11 +261,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
             KBUILD_DEFCONFIG="$DEFCONFIG" \
             defconfig
 
@@ -343,11 +280,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
             olddefconfig
 
       # ============================================================
@@ -419,11 +353,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
@@ -604,11 +535,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
@@ -624,11 +552,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-none-linux-gnu- \
-            CLANG_TRIPLE=aarch64-none-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
             INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
             modules_install
 
@@ -1026,7 +951,7 @@ jobs:
           {
             echo "Kernel: Realme SM6375"
             echo "Branch: oscar"
-            echo "Compiler: Snapdragon LLVM 10.0.9"
+            echo "Compiler: Proton Clang"
             echo "Clang source: $CLANG_SOURCE"
             echo "CUSTOM_CMDS: $CUSTOM_CMDS"
             echo "EXTRA_CMDS: $EXTRA_CMDS"
