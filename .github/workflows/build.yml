@@ -109,26 +109,47 @@ jobs:
           ls -lh clang.tar.gz
 
           echo
+          echo "===== VERIFY CLANG ARCHIVE ====="
+
+          file clang.tar.gz
+          tar -tzf clang.tar.gz >/dev/null
+
+          echo "Clang archive integrity: PASS"
+
+          echo
           echo "===== EXTRACT CLANG ====="
 
           tar -xzf clang.tar.gz \
             -C "$CLANG_DIR"
 
-          test -x "$CLANG_DIR/bin/clang"
-          test -x "$CLANG_DIR/bin/ld.lld"
+          echo
+          echo "===== LOCATE CLANG ====="
 
-          echo "$CLANG_DIR/bin" >> "$GITHUB_PATH"
+          CLANG_BIN="$(find "$CLANG_DIR" -type f -name clang -executable | head -n 1)"
+          LLD_BIN="$(find "$CLANG_DIR" -type f -name ld.lld -executable | head -n 1)"
+
+          echo "CLANG_BIN=$CLANG_BIN"
+          echo "LLD_BIN=$LLD_BIN"
+
+          test -n "$CLANG_BIN"
+          test -n "$LLD_BIN"
+
+          CLANG_BIN_DIR="$(dirname "$CLANG_BIN")"
+
+          echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
 
           echo
           echo "===== CLANG VERSION ====="
-          "$CLANG_DIR/bin/clang" --version
+          "$CLANG_BIN" --version
 
           echo
           echo "===== LLD VERSION ====="
-          "$CLANG_DIR/bin/ld.lld" --version
+          "$LLD_BIN" --version
 
           echo
           echo "Snapdragon LLVM 10.0.9: PASS"
+
+          echo
 
       # ============================================================
       # ARM GNU TOOLCHAIN 14.2
