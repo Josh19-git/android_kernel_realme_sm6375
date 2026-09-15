@@ -1,4 +1,4 @@
-name: Build Realme SM6375 Kernel
+name: Realme SM6375 Kernel - Proton Clang + KSU-Next + SUSFS
 
 on:
   workflow_dispatch:
@@ -6,82 +6,251 @@ on:
     branches:
       - oscar
 
+permissions:
+  contents: write
+
 jobs:
   build:
+    name: Build Realme SM6375 Kernel
     runs-on: ubuntu-22.04
 
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+      DEFCONFIG: vendor/holi-qgki_defconfig
+      KERNEL_NAME: Realme-SM6375-Kernel
+      KSU_VERSION: KernelSU-Next Legacy
+      SUSFS_VERSION: v2.3.0
+      CLANG_DIR: ${{ github.workspace }}/proton-clang
+      KBUILD_BUILD_USER: github-actions
+      KBUILD_BUILD_HOST: github-actions
+
     steps:
-      - name: Checkout kernel
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
+      - name: Checkout oscar
         uses: actions/checkout@v4
         with:
+          ref: oscar
           fetch-depth: 1
           submodules: false
 
+      # ============================================================
+      # DEPENDENCIES
+      # ============================================================
+
       - name: Install build dependencies
         run: |
+          set -e
+
           sudo apt-get update
+
           sudo apt-get install -y \
             bc \
             bison \
             build-essential \
             ccache \
+            clang \
+            curl \
+            device-tree-compiler \
             flex \
-            gcc-aarch64-linux-gnu \
+            git \
             libelf-dev \
             libssl-dev \
+            lld \
+            llvm \
             python3 \
             python3-pip \
             rsync \
             unzip \
-            zip
+            wget \
+            zip \
+            zstd
+
+      # ============================================================
+      # PROTON CLANG
+      # ============================================================
+
+      - name: Clone Proton Clang
+        run: |
+          set -e
+
+          git clone \
+            --depth=1 \
+            https://github.com/kdrag0n/proton-clang.git \
+            "$CLANG_DIR"
+
+          test -x "$CLANG_DIR/bin/clang"
+          test -x "$CLANG_DIR/bin/ld.lld"
+
+          echo "$CLANG_DIR/bin" >> "$GITHUB_PATH"
+
+          echo "===== PROTON CLANG ====="
+          "$CLANG_DIR/bin/clang" --version
+          "$CLANG_DIR/bin/ld.lld" --version
+
+      # ============================================================
+      # KERNELSU-NEXT
+      # ============================================================
 
       - name: Verify KernelSU-Next
         run: |
           set -e
 
           test -d KernelSU-Next/kernel
-          test -f KernelSU-Next/kernel/Kconfig
-          test -f KernelSU-Next/kernel/Makefile
           test -L drivers/kernelsu
+          test "$(readlink drivers/kernelsu)" = "../KernelSU-Next/kernel"
 
-          TARGET="$(readlink drivers/kernelsu)"
+          echo "KernelSU-Next: OK"
 
-          echo "KernelSU-Next directory: OK"
-          echo "drivers/kernelsu -> ${TARGET}"
+      # ============================================================
+      # SUSFS
+      # ============================================================
 
-          test "${TARGET}" = "../KernelSU-Next/kernel"
-
-          echo "KernelSU-Next symlink: OK"
-
-      - name: Verify SUSFS source
+      - name: Verify SUSFS
         run: |
           set -e
+
+          grep -q '#define SUSFS_VERSION "v2.3.0"' fs/susfs.c
 
           test -f fs/susfs.c
           test -f include/linux/susfs.h
           test -f include/linux/susfs_def.h
 
-          grep -q 'SUSFS_VERSION "v2.3.0"' include/linux/susfs.h
-          grep -q 'obj-\$(CONFIG_KSU_SUSFS) += susfs.o' fs/Makefile
+          grep -q 'obj-$(CONFIG_KSU_SUSFS) += susfs.o' fs/Makefile
 
-          echo "SUSFS source: OK"
-          echo "SUSFS version: v2.3.0"
+          echo "SUSFS v2.3.0: OK"
 
-      - name: Configure kernel
+      # ============================================================
+      # VERIFY KSU MANUAL HOOKS
+      # ============================================================
+
+      - name: Verify KernelSU manual hooks
         run: |
           set -e
 
-          make ARCH=arm64 \
-            KBUILD_DEFCONFIG=vendor/holi-qgki_defconfig \
+          echo "===== fs/open.c ====="
+          grep -n 'ksu_handle_faccessat' fs/open.c
+
+          echo
+          echo "===== kernel/reboot.c ====="
+          grep -n 'ksu_handle_sys_reboot' kernel/reboot.c
+
+          grep -q \
+            'ksu_handle_faccessat(&dfd, &filename, &mode, NULL)' \
+            fs/open.c
+
+          grep -q \
+            'ksu_handle_sys_reboot(magic1, magic2, cmd, &arg)' \
+            kernel/reboot.c
+
+          echo "KSU manual hooks: PASS"
+
+      # ============================================================
+      # VERIFY KBUILD HOOK CHECK
+      # ============================================================
+
+      - name: Verify KernelSU Kbuild hook validation
+        run: |
+          set -e
+
+          grep -n 'HAVE_KSU_HOOK' drivers/kernelsu/Makefile
+
+          grep -q \
+            'ksu_handle_sys_reboot' \
+            kernel/reboot.c
+
+          grep -q \
+            'ksu_handle_faccessat' \
+            fs/open.c
+
+          HAVE_KSU_HOOK=1
+
+          if grep -q \
+            'ksu_handle_sys_reboot' \
+            kernel/reboot.c; then
+            HAVE_KSU_HOOK=0
+          fi
+
+          echo "HAVE_KSU_HOOK=${HAVE_KSU_HOOK}"
+
+          if [ "$HAVE_KSU_HOOK" != "0" ]; then
+            echo "ERROR: KernelSU hook validation failed"
+            exit 1
+          fi
+
+          echo "KBUILD HOOK TEST: PASS"
+
+      # ============================================================
+      # DEFCONFIG
+      # ============================================================
+
+      - name: Generate defconfig
+        run: |
+          set -e
+
+          make \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            KBUILD_DEFCONFIG="$DEFCONFIG" \
             defconfig
 
-          make ARCH=arm64 olddefconfig
+      # ============================================================
+      # OLDDEFCONFIG
+      # ============================================================
+
+      - name: Run olddefconfig
+        run: |
+          set -e
+
+          make \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            olddefconfig
+
+      # ============================================================
+      # VERIFY CONFIGURATION
+      # ============================================================
 
       - name: Verify KSU and SUSFS configuration
         run: |
           set -e
 
-          configs="
+          CONFIG=out/.config
+
+          echo "===== KSU CONFIG ====="
+
+          grep '^CONFIG_KSU=' "$CONFIG"
+          grep '^CONFIG_KSU_MANUAL_HOOK=' "$CONFIG"
+
+          echo
+          echo "===== SUSFS CONFIG ====="
+
+          grep '^CONFIG_KSU_SUSFS=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SUS_PATH=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SUS_MOUNT=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SUS_KSTAT=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SPOOF_UNAME=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_ENABLE_LOG=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_OPEN_REDIRECT=' "$CONFIG"
+          grep '^CONFIG_KSU_SUSFS_SUS_MAP=' "$CONFIG"
+
+          required_configs="
           CONFIG_KSU=y
           CONFIG_KSU_MANUAL_HOOK=y
           CONFIG_KSU_SUSFS=y
@@ -96,97 +265,450 @@ jobs:
           CONFIG_KSU_SUSFS_SUS_MAP=y
           "
 
-          echo "===== KSU/SUSFS CONFIGURATION ====="
-
-          while IFS= read -r config; do
-            [ -z "$config" ] && continue
-
-            if grep -qx "$config" .config; then
-              echo "PASS: $config"
-            else
-              echo "FAIL: $config"
+          for config in $required_configs; do
+            if ! grep -qx "$config" "$CONFIG"; then
+              echo "ERROR: Missing configuration: $config"
               exit 1
             fi
-          done <<< "$configs"
+          done
 
-      - name: Verify KernelSU manual hooks
+          echo
+          echo "KSU/SUSFS CONFIGURATION: PASS"
+
+      # ============================================================
+      # BUILD IMAGE + DTBS
+      # ============================================================
+
+      - name: Build Image and DTBs
         run: |
           set -e
 
-          echo "===== REBOOT HOOK ====="
-          grep -n -B2 -A5 "ksu_handle_sys_reboot" kernel/reboot.c
+          make \
+            -j"$(nproc)" \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            Image \
+            dtbs
 
-          echo
-          echo "===== FACCESSAT HOOK ====="
-          grep -n -B2 -A5 "ksu_handle_faccessat" fs/open.c
+      # ============================================================
+      # VERIFY IMAGE
+      # ============================================================
 
-          grep -q "ksu_handle_sys_reboot" kernel/reboot.c
-          grep -q "ksu_handle_faccessat" fs/open.c
-
-          echo
-          echo "KernelSU manual hooks: PASS"
-
-      - name: Verify KernelSU Kbuild hook requirement
+      - name: Verify uncompressed Image
         run: |
           set -e
 
-          HAVE_KSU_HOOK=1
+          IMAGE="out/arch/arm64/boot/Image"
 
-          if grep -q "ksu_handle_sys_reboot" kernel/reboot.c; then
-            HAVE_KSU_HOOK=0
-          fi
+          test -f "$IMAGE"
 
-          echo "HAVE_KSU_HOOK=${HAVE_KSU_HOOK}"
+          echo "===== IMAGE ====="
+          ls -lh "$IMAGE"
+          file "$IMAGE"
 
-          if [ "${HAVE_KSU_HOOK}" -eq 0 ]; then
-            echo "KBUILD HOOK TEST: PASS"
-          else
-            echo "KBUILD HOOK TEST: FAIL"
+          if [ -f out/arch/arm64/boot/Image-dtb.gz ]; then
+            echo "ERROR: Image-dtb.gz was generated."
             exit 1
           fi
 
-      - name: Build kernel
-        run: |
-          set -e
-
-          make -j"$(nproc)" \
-            ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            Image.gz \
-            dtbs \
-            modules
-
-      - name: Collect build artifacts
-        if: success()
-        run: |
-          set -e
-
-          rm -rf artifacts
-          mkdir -p artifacts
-
-          cp arch/arm64/boot/Image artifacts/ 2>/dev/null || true
-          cp arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
-          cp System.map artifacts/ 2>/dev/null || true
-          cp Module.symvers artifacts/ 2>/dev/null || true
-          cp vmlinux artifacts/ 2>/dev/null || true
-
-          if [ -d arch/arm64/boot/dts ]; then
-            find arch/arm64/boot/dts -type f \
-              \( -name '*.dtb' -o -name '*.dtbo' \) \
-              -exec cp --parents {} artifacts/ \;
+          if [ -f out/arch/arm64/boot/Image-dtb ]; then
+            echo "ERROR: Image-dtb was generated."
+            exit 1
           fi
 
-          find . -type f -name '*.ko' \
-            -not -path './artifacts/*' \
-            -exec cp --parents {} artifacts/ \;
+          echo "Uncompressed Image: PASS"
 
-          echo "===== BUILD ARTIFACTS ====="
-          find artifacts -type f -print
+      # ============================================================
+      # LOCATE DTB
+      # ============================================================
+
+      - name: Locate DTB
+        run: |
+          set -e
+
+          mkdir -p artifacts
+
+          mapfile -t DTBS < <(
+            find out/arch/arm64/boot/dts \
+              -type f \
+              -name '*.dtb' \
+              -print
+          )
+
+          echo "Found ${#DTBS[@]} DTB files."
+
+          printf '%s\n' "${DTBS[@]}"
+
+          if [ "${#DTBS[@]}" -eq 0 ]; then
+            echo "ERROR: No DTB was generated."
+            exit 1
+          fi
+
+          if [ "${#DTBS[@]}" -gt 1 ]; then
+            echo
+            echo "ERROR: More than one DTB was generated."
+            echo "The workflow will not arbitrarily choose one."
+            exit 1
+          fi
+
+          cp "${DTBS[0]}" artifacts/dtb
+
+          echo
+          echo "Selected DTB:"
+          ls -lh artifacts/dtb
+
+      # ============================================================
+      # DTBO
+      # ============================================================
+
+      - name: Build or locate dtbo.img
+        run: |
+          set -e
+
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+
+            echo "Using out/arch/arm64/boot/dtbo.img"
+
+            cp \
+              out/arch/arm64/boot/dtbo.img \
+              artifacts/dtbo.img
+
+          elif [ -f arch/arm64/boot/dtbo.img ]; then
+
+            echo "Using arch/arm64/boot/dtbo.img"
+
+            cp \
+              arch/arm64/boot/dtbo.img \
+              artifacts/dtbo.img
+
+          else
+
+            echo "ERROR: No dtbo.img was produced."
+            echo
+            echo "Searching for DTBO files..."
+
+            find out/arch/arm64/boot/dts \
+              -type f \
+              \( -name '*.dtbo' -o -name '*overlay*.dtb' \) \
+              -print || true
+
+            echo
+            echo "A valid device-specific DTBO image definition"
+            echo "is required. The workflow will not create a"
+            echo "potentially invalid dtbo.img."
+            exit 1
+
+          fi
+
+          test -s artifacts/dtbo.img
+
+          echo
+          echo "DTBO:"
+          ls -lh artifacts/dtbo.img
+
+      # ============================================================
+      # MODULES
+      # ============================================================
+
+      - name: Build kernel modules
+        run: |
+          set -e
+
+          make \
+            -j"$(nproc)" \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            modules
+
+          make \
+            ARCH="$ARCH" \
+            SUBARCH="$SUBARCH" \
+            O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
+            modules_install
+
+      # ============================================================
+      # COLLECT RAW FILES
+      # ============================================================
+
+      - name: Collect raw kernel files
+        run: |
+          set -e
+
+          cp \
+            out/arch/arm64/boot/Image \
+            artifacts/Image
+
+          test -s artifacts/Image
+          test -s artifacts/dtb
+          test -s artifacts/dtbo.img
+
+          echo "===== RAW ARTIFACTS ====="
+
+          ls -lh \
+            artifacts/Image \
+            artifacts/dtb \
+            artifacts/dtbo.img
+
+      # ============================================================
+      # CLONE ANYKERNEL3
+      # ============================================================
+
+      - name: Clone osm0sis AnyKernel3
+        run: |
+          set -e
+
+          git clone \
+            --depth=1 \
+            https://github.com/osm0sis/AnyKernel3.git \
+            AnyKernel3
+
+          test -f AnyKernel3/tools/ak3-core.sh
+          test -f AnyKernel3/META-INF/com/google/android/update-binary
+
+          echo "osm0sis AnyKernel3: PASS"
+
+      # ============================================================
+      # PREPARE ANYKERNEL3
+      # ============================================================
+
+      - name: Prepare AnyKernel3
+        run: |
+          set -e
+
+          cd AnyKernel3
+
+          rm -f \
+            Image \
+            Image.gz \
+            Image-dtb \
+            Image-dtb.gz \
+            dtb \
+            dtbo \
+            dtbo.img
+
+          rm -rf \
+            ramdisk \
+            patch \
+            modules
+
+          cp ../artifacts/Image Image
+          cp ../artifacts/dtb dtb
+          cp ../artifacts/dtbo.img dtbo.img
+
+          test -s Image
+          test -s dtb
+          test -s dtbo.img
+
+          if find . -maxdepth 1 -type f \
+              \( -name 'Image-dtb' -o -name 'Image-dtb.gz' \); then
+            echo "ERROR: Image-dtb detected."
+            exit 1
+          fi
+
+          echo "===== ANYKERNEL3 FILES ====="
+
+          ls -lh \
+            Image \
+            dtb \
+            dtbo.img
+
+          cd ..
+
+      # ============================================================
+      # ANYKERNEL3 INSTALLER
+      # ============================================================
+
+      - name: Configure AnyKernel3 installer
+        run: |
+          set -e
+
+          cat > AnyKernel3/anykernel.sh <<'AK3EOF'
+          # AnyKernel3 installer
+          # Realme SM6375
+          # KernelSU-Next Legacy + SUSFS v2.3.0
+
+          properties() { '
+          kernel.string=Realme SM6375 Kernel - KernelSU-Next Legacy + SUSFS v2.3.0
+          do.devicecheck=0
+          do.modules=0
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          supported.versions=
+          supported.patchlevels=
+          supported.vendorpatchlevels=
+          '; }
+
+          BLOCK=boot
+          IS_SLOT_DEVICE=auto
+          RAMDISK_COMPRESSION=auto
+          PATCH_VBMETA_FLAG=auto
+
+          . tools/ak3-core.sh
+
+          dump_boot
+
+          write_boot
+          AK3EOF
+
+          chmod 755 AnyKernel3/anykernel.sh
+
+          test -x AnyKernel3/anykernel.sh
+
+          echo "AnyKernel3 installer configured."
+
+      # ============================================================
+      # VERIFY ANYKERNEL3 CONTENT
+      # ============================================================
+
+      - name: Verify AnyKernel3 package content
+        run: |
+          set -e
+
+          test -f AnyKernel3/Image
+          test -f AnyKernel3/dtb
+          test -f AnyKernel3/dtbo.img
+
+          if [ -f AnyKernel3/Image.gz ]; then
+            echo "ERROR: Image.gz exists in AnyKernel3."
+            exit 1
+          fi
+
+          if [ -f AnyKernel3/Image-dtb.gz ]; then
+            echo "ERROR: Image-dtb.gz exists in AnyKernel3."
+            exit 1
+          fi
+
+          if [ -f AnyKernel3/Image-dtb ]; then
+            echo "ERROR: Image-dtb exists in AnyKernel3."
+            exit 1
+          fi
+
+          echo "AnyKernel3 contents: PASS"
+
+      # ============================================================
+      # CREATE FLASHABLE ZIP
+      # ============================================================
+
+      - name: Create AnyKernel3 flashable ZIP
+        run: |
+          set -e
+
+          cd AnyKernel3
+
+          zip -r9 \
+            ../AnyKernel3-Realme-SM6375.zip \
+            . \
+            -x '.git/*' \
+            -x '*.zip' \
+            -x 'README.md' \
+            -x '*placeholder*'
+
+          cd ..
+
+          test -s AnyKernel3-Realme-SM6375.zip
+
+          echo "===== ANYKERNEL3 ZIP ====="
+          ls -lh AnyKernel3-Realme-SM6375.zip
+
+      # ============================================================
+      # VALIDATE FINAL ZIP
+      # ============================================================
+
+      - name: Validate final AnyKernel3 ZIP
+        run: |
+          set -e
+
+          ZIP="AnyKernel3-Realme-SM6375.zip"
+
+          echo "===== ZIP CONTENT ====="
+
+          unzip -l "$ZIP"
+
+          unzip -l "$ZIP" | grep -Eq \
+            '(^|[[:space:]])Image$'
+
+          unzip -l "$ZIP" | grep -Eq \
+            '(^|[[:space:]])dtb$'
+
+          unzip -l "$ZIP" | grep -Eq \
+            '(^|[[:space:]])dtbo\.img$'
+
+          if unzip -l "$ZIP" | grep -Eq \
+              'Image-dtb(\.gz)?'; then
+            echo "ERROR: Image-dtb found in final ZIP."
+            exit 1
+          fi
+
+          if unzip -l "$ZIP" | grep -Eq \
+              '(^|[[:space:]])Image\.gz$'; then
+            echo "ERROR: Image.gz found in final ZIP."
+            exit 1
+          fi
+
+          echo
+          echo "=========================================="
+          echo " ANYKERNEL3 PACKAGE VALIDATION: PASS"
+          echo "=========================================="
+
+      # ============================================================
+      # BUILD INFO
+      # ============================================================
+
+      - name: Generate build information
+        run: |
+          set -e
+
+          {
+            echo "Kernel: Realme SM6375"
+            echo "Branch: oscar"
+            echo "Compiler: Proton Clang"
+            echo "KernelSU: KernelSU-Next Legacy"
+            echo "SUSFS: v2.3.0"
+            echo "Defconfig: vendor/holi-qgki_defconfig"
+            echo
+            echo "Kernel files:"
+            ls -lh artifacts/Image
+            ls -lh artifacts/dtb
+            ls -lh artifacts/dtbo.img
+            echo
+            echo "AnyKernel3:"
+            ls -lh AnyKernel3-Realme-SM6375.zip
+          } > artifacts/build-info.txt
+
+      # ============================================================
+      # UPLOAD ARTIFACTS
+      # ============================================================
 
       - name: Upload kernel artifacts
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: realme-sm6375-kernel
-          path: artifacts/
+          name: Realme-SM6375-Kernel
           if-no-files-found: error
+          compression-level: 0
+          path: |
+            artifacts/Image
+            artifacts/dtb
+            artifacts/dtbo.img
+            artifacts/build-info.txt
+            AnyKernel3-Realme-SM6375.zip
