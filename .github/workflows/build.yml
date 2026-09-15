@@ -21,10 +21,8 @@ jobs:
       KERNEL_NAME: Realme-SM6375-Kernel
       KSU_VERSION: KernelSU-Next Legacy
       SUSFS_VERSION: v2.3.0
-      CLANG_SOURCE: "https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz"
-
-
-      CUSTOM_CMDS: ""
+      CLANG_SOURCE: "https://github.com/kdrag0n/proton-clang.git"
+      CUSTOM_CMDS: "CROSS_COMPILE=aarch64-linux-gnu- CLANG_TRIPLE=aarch64-linux-gnu-"
       EXTRA_CMDS: "LLVM=1 LLVM_IAS=1"
       CLANG_DIR: ${{ github.workspace }}/proton-clang
 
@@ -81,48 +79,33 @@ jobs:
       # PROTON CLANG
       # ============================================================
 
-      - name: Download Proton Clang
+      - name: Clone Proton Clang
         run: |
           set -e
 
           echo "===== PROTON CLANG ====="
-
           rm -rf "$CLANG_DIR"
-          mkdir -p "$CLANG_DIR"
 
-          echo "===== PROTON CLANG SOURCE ====="
-          echo "$CLANG_SOURCE"
-          echo
-
-          echo "===== DOWNLOAD PROTON CLANG ====="
-
-          wget -q --show-progress \
+          echo "===== CLONE PROTON CLANG (DEPTH 1) ====="
+          git clone --depth 1 \
             "$CLANG_SOURCE" \
-            -O proton-clang.tar.gz
+            "$CLANG_DIR"
 
-          test -s proton-clang.tar.gz
-
-          echo
-          echo "===== PROTON CLANG ARCHIVE ====="
-          ls -lh proton-clang.tar.gz
+          test -d "$CLANG_DIR"
+          test -d "$CLANG_DIR/.git"
 
           echo
-          echo "===== VERIFY PROTON CLANG ARCHIVE ====="
-
-          file proton-clang.tar.gz
-          tar -tzf proton-clang.tar.gz >/dev/null
-
-          echo "Proton Clang archive integrity: PASS"
+          echo "===== PROTON CLANG COMMIT ====="
+          git -C "$CLANG_DIR" rev-parse --short HEAD
 
           echo
-          echo "===== EXTRACT PROTON CLANG ====="
+          echo "===== PROTON CLANG HISTORY ====="
+          git -C "$CLANG_DIR" rev-list --count HEAD
 
-          tar -xzf proton-clang.tar.gz \
-            -C "$CLANG_DIR"
+          test "$(git -C "$CLANG_DIR" rev-list --count HEAD)" = "1"
 
           echo
           echo "===== LOCATE PROTON CLANG ====="
-
           CLANG_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/clang' -executable | head -n 1)"
           LLD_BIN="$(find "$CLANG_DIR" -type f -path '*/bin/ld.lld' -executable | head -n 1)"
           CROSS_LD="$(find "$CLANG_DIR" -type f -path '*/bin/aarch64-linux-gnu-ld' -executable | head -n 1)"
@@ -136,7 +119,6 @@ jobs:
           test -n "$CROSS_LD"
 
           CLANG_BIN_DIR="$(dirname "$CLANG_BIN")"
-
           echo "$CLANG_BIN_DIR" >> "$GITHUB_PATH"
 
           echo
@@ -153,6 +135,7 @@ jobs:
 
           echo
           echo "Proton Clang: PASS"
+          echo "Clone depth: 1"
           echo "AArch64 binutils: PASS"
 
       - name: Verify KernelSU-Next
