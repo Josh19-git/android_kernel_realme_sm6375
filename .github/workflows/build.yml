@@ -23,12 +23,14 @@ jobs:
       SUSFS_VERSION: v2.3.0
 
       CLANG_SOURCE: "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/llvm-arm-toolchain-ship-10.0.9.tar.gz"
+      GNU_SOURCE: "https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
 
 
       CUSTOM_CMDS: ""
       EXTRA_CMDS: "LLVM=1 LLVM_IAS=1"
 
       CLANG_DIR: ${{ github.workspace }}/clang
+      GNU_DIR: ${{ github.workspace }}/gnu
 
       KBUILD_BUILD_USER: github-actions
       KBUILD_BUILD_HOST: github-actions
@@ -127,6 +129,53 @@ jobs:
 
           echo
           echo "Snapdragon LLVM 10.0.9: PASS"
+
+      # ============================================================
+      # ARM GNU TOOLCHAIN 14.2
+      # ============================================================
+
+      - name: Download ARM GNU 14.2
+        run: |
+          set -e
+
+          rm -rf "$GNU_DIR"
+          mkdir -p "$GNU_DIR"
+
+          echo "===== GNU SOURCE ====="
+          echo "$GNU_SOURCE"
+          echo
+
+          echo "===== DOWNLOAD ARM GNU ====="
+
+          wget -q --show-progress             "$GNU_SOURCE"             -O arm-gnu.tar.xz
+
+          test -s arm-gnu.tar.xz
+
+          echo
+          echo "===== GNU ARCHIVE ====="
+          ls -lh arm-gnu.tar.xz
+
+          echo
+          echo "===== EXTRACT ARM GNU ====="
+
+          tar -xJf arm-gnu.tar.xz             -C "$GNU_DIR"             --strip-components=1
+
+          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-gcc"
+          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-ld"
+          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-as"
+          test -x "$GNU_DIR/bin/aarch64-none-linux-gnu-ar"
+
+          echo "$GNU_DIR/bin" >> "$GITHUB_PATH"
+
+          echo
+          echo "===== ARM GNU VERSION ====="
+
+          "$GNU_DIR/bin/aarch64-none-linux-gnu-gcc" --version
+          "$GNU_DIR/bin/aarch64-none-linux-gnu-ld" --version | head -n 1
+          "$GNU_DIR/bin/aarch64-none-linux-gnu-as" --version | head -n 1
+
+          echo
+          echo "ARM GNU 14.2: PASS"
 
       - name: Verify KernelSU-Next
         run: |
@@ -234,6 +283,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            CLANG_TRIPLE=aarch64-none-linux-gnu- \
             CC=clang \
             KBUILD_DEFCONFIG="$DEFCONFIG" \
             defconfig
@@ -252,6 +303,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            CLANG_TRIPLE=aarch64-none-linux-gnu- \
             CC=clang \
             olddefconfig
 
@@ -324,6 +377,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            CLANG_TRIPLE=aarch64-none-linux-gnu- \
             CC=clang \
             AR=llvm-ar \
             NM=llvm-nm \
@@ -505,6 +560,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            CLANG_TRIPLE=aarch64-none-linux-gnu- \
             CC=clang \
             AR=llvm-ar \
             NM=llvm-nm \
@@ -521,6 +578,8 @@ jobs:
             O=out \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-none-linux-gnu- \
+            CLANG_TRIPLE=aarch64-none-linux-gnu- \
             CC=clang \
             INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
             modules_install
@@ -921,7 +980,6 @@ jobs:
             echo "Branch: oscar"
             echo "Compiler: Snapdragon LLVM 10.0.9"
             echo "Clang source: $CLANG_SOURCE"
-            echo "GCC_GNU: $GCC_GNU"
             echo "CUSTOM_CMDS: $CUSTOM_CMDS"
             echo "EXTRA_CMDS: $EXTRA_CMDS"
             echo "KernelSU: KernelSU-Next Legacy"
