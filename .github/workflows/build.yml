@@ -513,6 +513,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CC=clang \
             INSTALL_MOD_PATH="$GITHUB_WORKSPACE/modules" \
+            INSTALL_MOD_STRIP=1 \
             modules_install
 
           echo
@@ -522,6 +523,12 @@ jobs:
             -type f \
             -name '*.ko' \
             -print
+
+          echo
+          echo "===== CLEAN BUILD TREE ====="
+          echo "Removing out/ to reclaim runner disk space..."
+          rm -rf "$GITHUB_WORKSPACE/out"
+          echo "out/: removed"
 
       # ============================================================
       # BUILD vendor_dlkm.img
@@ -535,15 +542,10 @@ jobs:
           set -e
 
           MODULE_ROOT="$GITHUB_WORKSPACE/modules"
-          VENDOR_DLKM_ROOT="$GITHUB_WORKSPACE/vendor_dlkm"
           VENDOR_DLKM_IMG="$GITHUB_WORKSPACE/artifacts/vendor_dlkm.img"
 
-          rm -rf "$VENDOR_DLKM_ROOT"
           rm -f "$VENDOR_DLKM_IMG"
-
-          mkdir -p \
-            "$VENDOR_DLKM_ROOT/lib/modules" \
-            "$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
 
           echo "===== MODULE TREE ====="
 
@@ -562,22 +564,11 @@ jobs:
           echo
           echo "Kernel modules found: $KO_COUNT"
 
-          if [ -d "$MODULE_ROOT/lib/modules" ]; then
-            cp -a \
-              "$MODULE_ROOT/lib/modules/." \
-              "$VENDOR_DLKM_ROOT/lib/modules/"
-          fi
-
           echo
-          echo "===== MODULE IMAGE CONTENT ====="
+          echo "===== MODULE TREE SIZE ====="
 
-          find "$VENDOR_DLKM_ROOT" \
-            -type f \
-            -print
+          MODULE_BYTES="$(du -sb "$MODULE_ROOT" | awk '{print $1}')"
 
-          MODULE_BYTES="$(du -sb "$VENDOR_DLKM_ROOT" | awk '{print $1}')"
-
-          echo
           echo "Module tree size: $MODULE_BYTES bytes"
 
           # Add filesystem overhead and growth room.
@@ -600,36 +591,15 @@ jobs:
             -s "$IMAGE_BYTES" \
             "$VENDOR_DLKM_IMG"
 
+          # Populate the ext4 image directly from the modules tree.
+          # This avoids creating vendor_dlkm/ and vendor_dlkm_mount/
+          # copies and greatly reduces runner disk usage.
           mkfs.ext4 \
             -F \
             -m 0 \
             -L vendor_dlkm \
+            -d "$MODULE_ROOT" \
             "$VENDOR_DLKM_IMG"
-
-          echo
-          echo "===== MOUNT vendor_dlkm.img ====="
-
-          MOUNT_POINT="$GITHUB_WORKSPACE/vendor_dlkm_mount"
-
-          sudo rm -rf "$MOUNT_POINT"
-          sudo mkdir -p "$MOUNT_POINT"
-
-          sudo mount \
-            -o loop \
-            "$VENDOR_DLKM_IMG" \
-            "$MOUNT_POINT"
-
-          echo
-          echo "===== COPY MODULES ====="
-
-          sudo cp -a \
-            "$VENDOR_DLKM_ROOT/." \
-            "$MOUNT_POINT/"
-
-          sync
-
-          sudo umount "$MOUNT_POINT"
-          sudo rm -rf "$MOUNT_POINT"
 
           echo
           echo "===== CHECK vendor_dlkm.img ====="
