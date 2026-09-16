@@ -349,6 +349,14 @@ jobs:
 
           echo "Uncompressed Image: PASS"
 
+          echo
+          echo "===== COPY IMAGE ====="
+          mkdir -p artifacts
+          cp "$IMAGE" artifacts/Image
+          test -s artifacts/Image
+          ls -lh artifacts/Image
+          echo "artifacts/Image: PASS"
+
       # ============================================================
       # LOCATE DTB
       # ============================================================
@@ -627,11 +635,29 @@ jobs:
         run: |
           set -e
 
-          test -s artifacts/Image
-          test -s artifacts/dtb
-          test -s artifacts/dtbo.img
-          test -s artifacts/vendor_dlkm.img
+          echo "===== RAW ARTIFACT CHECK ====="
 
+          for f in \
+            artifacts/Image \
+            artifacts/dtb \
+            artifacts/dtbo.img \
+            artifacts/vendor_dlkm.img
+          do
+            echo
+            echo "Checking: $f"
+
+            if [ -s "$f" ]; then
+              ls -lh "$f"
+              file "$f"
+              echo "PASS: $f"
+            else
+              echo "FAIL: $f is missing or empty"
+              ls -lah "$(dirname "$f")"
+              exit 1
+            fi
+          done
+
+          echo
           echo "===== RAW ARTIFACTS ====="
 
           ls -lh \
@@ -697,7 +723,9 @@ jobs:
               \( \
                 -name 'Image-dtb' \
                 -o -name 'Image-dtb.gz' \
-              \); then
+              \) \
+              -print -quit | grep -q .
+          then
             echo "ERROR: Image-dtb detected."
             exit 1
           fi
@@ -726,16 +754,22 @@ jobs:
           # KernelSU-Next Legacy + SUSFS v2.3.0
 
           properties() { '
-          kernel.string=Realme SM6375 Kernel - KernelSU-Next Legacy + SUSFS v2.3.0
-          do.devicecheck=0
+          kernel.string=Realme 9 Pro LineageOS-23.2
+          do.devicecheck=1
           do.modules=0
-          do.systemless=0
+          do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
+          device.name1=oscar
+          device.name2=RMX3471
+          device.name3=RMX3472
+          device.name4=holi
+          device.name5=RE54CBL1
+          device.name6=RMX3472 (RE54CBL1)
           supported.versions=
           supported.patchlevels=
           supported.vendorpatchlevels=
-          '; }
+          '; } # end properties
 
           BLOCK=boot
           IS_SLOT_DEVICE=auto
